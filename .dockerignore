@@ -1,0 +1,22 @@
+# Secretos: nunca entran en la imagen
+.env
+.env.*
+!.env.example
+
+# Pruebas y punta a punta: no se necesitan para correr
+tests/
+e2e/
+
+# Cachés y entornos locales
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.pylint.d/
+.coverage
+htmlcov/
+
+# Control de versiones y CI
+.git/
+.github/
+.gitignore
