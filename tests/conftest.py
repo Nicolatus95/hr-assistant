@@ -25,8 +25,8 @@ from app.llm import FakeLLM
 from app.main import create_app
 
 PRODUCT_DIR = Path(__file__).resolve().parents[1]
-EMPLOYEES_FILE = Path(__file__).resolve().parents[2] / "spec" / "employees.json"
-PRICES_FILE = Path(__file__).resolve().parents[2] / "spec" / "model_prices.json"
+EMPLOYEES_FILE = PRODUCT_DIR / "data" / "employees.json"
+PRICES_FILE = PRODUCT_DIR / "data" / "model_prices.json"
 TEST_API_KEY = "test-key-0123456789"
 GATEWAY_ENV = {
     "MODEL_PROVIDER": "gateway",
