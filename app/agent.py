@@ -23,6 +23,7 @@ class AgentResult:  # pylint: disable=too-many-instance-attributes
     :param input_tokens: tokens de entrada acumulados.
     :param output_tokens: tokens de salida acumulados.
     :param stopped: ``True`` solo si el tope de vueltas cortó la corrida.
+    :param prefetched: ``True`` si se ejecutó una herramienta anticipada.
     """
 
     answer: str
@@ -33,6 +34,7 @@ class AgentResult:  # pylint: disable=too-many-instance-attributes
     stopped: bool = False
     cost_usd: float = 0.0
     cached_calls: int = 0
+    prefetched: bool = False
 
 
 def _accepts_model(complete) -> bool:
@@ -134,7 +136,12 @@ class Agent:  # pylint: disable=too-many-instance-attributes
         }
         self._traced_run = wrap(self._run, f"agent:{name}")
 
-    def run(self, messages: list[dict], model: str | None = None) -> AgentResult:
+    def run(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        prefetch: tuple[str, dict] | None = None,
+    ) -> AgentResult:
         """Ejecuta el bucle hasta obtener respuesta o llegar al tope.
 
         El mensaje de sistema se antepone aquí, después de que el llamador
@@ -142,18 +149,29 @@ class Agent:  # pylint: disable=too-many-instance-attributes
 
         :param messages: conversación, con la pregunta al final.
         :param model: modelo elegido por el enrutador; opcional.
+        :param prefetch: herramienta y argumentos que se ejecutan antes de la
+            primera llamada al modelo; opcional.
         :return: el resultado del agente.
         """
         if self._prompt:
             messages = [{"role": "system", "content": self._prompt}, *messages]
-        return self._traced_run(messages, model)
+        if prefetch is None:
+            return self._traced_run(messages, model)
+        return self._traced_run(messages, model, prefetch)
 
-    def _run(self, messages: list[dict], model: str | None = None) -> AgentResult:
+    def _run(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        prefetch: tuple[str, dict] | None = None,
+    ) -> AgentResult:
         """Bucle del agente, sin trazas propias."""
         result = AgentResult(answer=CAP_MESSAGE)
         conversation = list(messages)
         seen: set = set()
-        for _ in range(self._max_steps):
+        if prefetch is not None:
+            self._prefetch(prefetch, result, seen, conversation)
+        for _ in range(self._max_steps - result.steps):
             if self._with_model and model is not None:
                 reply = self._complete(conversation, model)
             else:
@@ -206,12 +224,37 @@ class Agent:  # pylint: disable=too-many-instance-attributes
         seen.add(key)
         if self._audit is not None:
             self._audit(name, args)
+        return {"final": False, "text": self._call_tool(name, args, result)}
+
+    def _call_tool(self, name, args: dict, result: AgentResult) -> str:
+        """Ejecuta una herramienta y devuelve su salida como texto."""
         tool = self._tools.get(name) if isinstance(name, str) else None
         if tool is None:
-            return {"final": False, "text": f"error: unknown tool {name!r}"}
+            return f"error: unknown tool {name!r}"
         try:
             output = tool(args)
         except (KeyError, TypeError, AttributeError):
-            return {"final": False, "text": f"error: bad arguments for {name}"}
+            return f"error: bad arguments for {name}"
         result.tools_used.append(name)
-        return {"final": False, "text": json.dumps(output, ensure_ascii=False)}
+        return json.dumps(output, ensure_ascii=False)
+
+    def _prefetch(
+        self,
+        prefetch: tuple[str, dict],
+        result: AgentResult,
+        seen: set,
+        conversation: list[dict],
+    ) -> None:
+        """Ejecuta la herramienta anticipada y agrega su resultado.
+
+        Cuenta como una vuelta, se audita con ``prefetched=True`` y queda en
+        ``seen`` para que una petición repetida del modelo reciba el error.
+        """
+        name, args = prefetch
+        seen.add((name, json.dumps(args, sort_keys=True)))
+        if self._audit is not None:
+            self._audit(name, args, prefetched=True)
+        text = self._call_tool(name, args, result)
+        result.steps += 1
+        result.prefetched = bool(result.tools_used)
+        conversation.append({"role": "user", "content": TOOL_PREFIX + text})

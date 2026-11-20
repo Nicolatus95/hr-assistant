@@ -31,3 +31,28 @@ def choose_agent(
     if keyword:
         return "policies", f"policy:{keyword}"
     return "directory", "default"
+
+
+def choose_tool(
+    question: str, reason: str, departments: tuple[str, ...] = ()
+) -> tuple[str, dict] | None:
+    """Indica la herramienta que el especialista puede traer antes del modelo.
+
+    :param question: pregunta ya enmascarada.
+    :param reason: motivo devuelto por :func:`choose_agent`.
+    :param departments: nombres de departamento conocidos.
+    :return: la pareja ``(herramienta, argumentos)`` o ``None`` si no hay.
+    """
+    kind, _, keyword = reason.partition(":")
+    if kind == "employee_id":
+        found = _EMPLOYEE_ID.search(question)
+        if found:
+            return "get_employee", {"employee_id": found.group()}
+    elif kind == "department":
+        normalized = normalize(question)
+        for name in departments:
+            if normalize(name) in normalized:
+                return "search_by_department", {"department": name}
+    elif kind == "policy" and keyword:
+        return "get_policy", {"topic": keyword}
+    return None

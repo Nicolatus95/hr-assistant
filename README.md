@@ -64,6 +64,7 @@ En los metadatos de `hr_request`, `agent_route` lleva solo el tipo de regla
 | `MAX_HISTORY_ITEMS` | `20` | Mensajes de historial permitidos |
 | `MAX_ANSWER_CHARS` | `1500` | Largo máximo de la respuesta |
 | `LANGSMITH_PROJECT` | `hr-assistant-local` | Proyecto de LangSmith |
+| `PREFETCH_TOOLS` | `true` | El especialista trae en código el dato que indica el supervisor antes de llamar al modelo (cuenta como una vuelta, va en `tools_used` y se audita con `prefetched: true`). `false` es la línea base |
 
 ## Costos
 

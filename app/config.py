@@ -24,6 +24,8 @@ class Config:  # pylint: disable=too-many-instance-attributes
     :param max_history_items: mensajes de historial permitidos por petición.
     :param max_answer_chars: largo máximo de la respuesta.
     :param langsmith_project: proyecto de LangSmith donde van las trazas.
+    :param prefetch_tools: si el especialista trae en código el dato que el
+        supervisor indica antes de llamar al modelo.
     """
 
     model_provider: str = "fake"
@@ -57,6 +59,7 @@ class Config:  # pylint: disable=too-many-instance-attributes
     max_history_items: int = 20
     max_answer_chars: int = 1500
     langsmith_project: str = "hr-assistant-local"
+    prefetch_tools: bool = True
 
 
 def _boolean(env: Mapping[str, str], name: str, default: bool) -> bool:
@@ -191,6 +194,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
             env, "MAX_ANSWER_CHARS", defaults.max_answer_chars
         ),
         langsmith_project=env.get("LANGSMITH_PROJECT") or defaults.langsmith_project,
+        prefetch_tools=_boolean(env, "PREFETCH_TOOLS", defaults.prefetch_tools),
     )
     enforce(config)
     return config

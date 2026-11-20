@@ -15,6 +15,7 @@ Assumed interfaces (the developer must follow them):
 import json
 from pathlib import Path
 
+from conftest import FakeLangSmith
 from fastapi.testclient import TestClient
 
 from app.config import load_config
@@ -50,45 +51,6 @@ END_KEYS = {
 }
 
 
-class FakeLangSmith:
-    """Records the runs that LangSmith would receive."""
-
-    tracing_queue = None
-
-    def __init__(self):
-        self.runs = {}
-
-    def create_run(self, **kwargs):
-        """Store a run when it starts."""
-        extra = dict(kwargs.get("extra") or {})
-        extra["metadata"] = dict(extra.get("metadata") or {})
-        self.runs[str(kwargs["id"])] = {**kwargs, "extra": extra}
-
-    def update_run(self, run_id, **kwargs):
-        """Merge the closing data of a run (outputs, error, metadata)."""
-        run = self.runs[str(run_id)]
-        meta = (kwargs.pop("extra", None) or {}).get("metadata") or {}
-        run["extra"]["metadata"].update(meta)
-        run.update({k: v for k, v in kwargs.items() if v is not None})
-
-    def __getattr__(self, _name):
-        return lambda *args, **kwargs: None
-
-    def named(self, name):
-        """Return the runs with that name."""
-        return [r for r in self.runs.values() if r["name"] == name]
-
-    def parent_name(self, run):
-        """Return the name of the parent of a run, or None."""
-        parent = self.runs.get(str(run.get("parent_run_id")))
-        return parent["name"] if parent else None
-
-    def metadata(self, name):
-        """Return the metadata of the only run with that name."""
-        (run,) = self.named(name)
-        return run["extra"]["metadata"]
-
-
 def build_service(llm, directory, **env):
     """Create an app with tracing on and a fake client; return both."""
     settings = {
@@ -98,6 +60,7 @@ def build_service(llm, directory, **env):
         "API_KEYS": f"test:{TEST_API_KEY}",
         "LANGSMITH_TRACING": "true",
         "LANGSMITH_PROJECT": "hr-test",
+        "PREFETCH_TOOLS": "false",
         **env,
     }
     config = load_config(settings)

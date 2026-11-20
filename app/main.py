@@ -167,10 +167,16 @@ def build_agents(  # pylint: disable=too-many-arguments,too-many-positional-argu
     def audit_for(agent_name: str):
         """Crea la auditoría de herramientas de un especialista."""
 
-        def audit(tool: str, args: dict) -> None:
+        def audit(tool: str, args: dict, prefetched: bool = False) -> None:
             """Registra la llamada a una herramienta."""
+            extra = {"prefetched": True} if prefetched else {}
             logger.emit(
-                "audit", action="tool_call", tool=tool, args=args, agent=agent_name
+                "audit",
+                action="tool_call",
+                tool=tool,
+                args=args,
+                agent=agent_name,
+                **extra,
             )
 
         return audit

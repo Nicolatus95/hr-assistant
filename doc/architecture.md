@@ -4,7 +4,7 @@ API FastAPI sin estado, modelo detrás de una interfaz y datos de solo lectura. 
 sesión 3 agrega el modelo real por AI Gateway y cuatro palancas de costo. La sesión 4 agrega acceso por clave, límite de
 peticiones, compliance al arrancar, contenedor, CI y Render. La sesión 5 reemplaza el agente único por un supervisor con
 dos especialistas (`directory` y `policies`), y agrega detección de PII, validación de la salida, auditoría completa,
-encabezados de seguridad y trazas por agente. Ver `adr/` (0014 a 0017).
+encabezados de seguridad, trazas por agente y herramienta anticipada. Ver `adr/` (0014 a 0018).
 
 ```mermaid
 flowchart LR
@@ -16,7 +16,7 @@ flowchart LR
     M --> X[context.py]
     M -- pregunta e historial --> PII[pii.py<br/>enmascara]
     PII --> O[orchestrator.py<br/>Orchestrator: flujo y trazas]
-    O --> S[supervisor.py<br/>reglas, 0 tokens]
+    O --> S[supervisor.py<br/>reglas, 0 tokens<br/>agente, motivo, herramienta y args]
     S -- employee_id, department, default --> AD[agent directory]
     S -- policy:palabra --> AP[agent policies]
     M --> H[window.py + router.py]
@@ -24,8 +24,10 @@ flowchart LR
     AP --> L
     L -- HTTPS --> GW[(AI Gateway<br/>Workers AI)]
     AD -- tools --> D[directory.py]
+    AD -. PREFETCH_TOOLS: herramienta anticipada, antes del modelo .-> D
     D --> J[(data/employees.json)]
     AP -- tools --> PO[policies.py]
+    AP -. PREFETCH_TOOLS: herramienta anticipada, antes del modelo .-> PO
     PO --> PJ[(data/policies.json)]
     AD --> PR[prompts.py]
     AP --> PR
@@ -47,13 +49,24 @@ flowchart LR
     RN --> M
 ```
 
+Flujo con herramienta anticipada (ADR 0018):
+1. El supervisor elige especialista y motivo, y además la herramienta y sus argumentos (`default` no trae ninguna).
+2. Se audita `agent_selected` y corre el especialista.
+3. Con `PREFETCH_TOOLS=true`, el especialista ejecuta esa herramienta en código, antes de llamar al modelo. Cuenta como
+   una vuelta de `AGENT_MAX_STEPS`, va en `tools_used`, se audita como `tool_call` con `prefetched: true` y deja el
+   span `tool:<nombre>`.
+4. El resultado entra a la conversación como `Resultado de la herramienta: ...` y el modelo solo redacta la respuesta.
+5. Si el modelo repite la herramienta con los mismos argumentos, recibe el error de llamada repetida.
+6. `agent_run` y los metadatos de `hr_request` registran `prefetched`.
+
 Módulos nuevos de la sesión 5:
-- `supervisor.py`: elige especialista y motivo con reglas en código.
+- `supervisor.py`: elige especialista, motivo, herramienta y argumentos con reglas en código.
 - `policies.py`: `get_policy` y `list_policies` sobre `data/policies.json`.
 - `prompts.py`: un prompt corto por especialista.
 - `pii.py`: detección y enmascarado de datos personales (tipos, nunca valores).
 - `output_guard.py`: bloquea HTML y secretos, recorta el largo.
-- `agent.py`: un agente parametrizado por herramientas y prompt; lectura tolerante del JSON del modelo.
+- `agent.py`: un agente parametrizado por herramientas y prompt; lectura tolerante del JSON del modelo; ejecuta la
+  herramienta anticipada.
 - `orchestrator.py`: `Orchestrator` corre el flujo supervisor, especialista, salida segura (PII y `output_guard`) y
   abre el árbol de trazas `hr_request` > `supervisor` > `agent:<nombre>`; devuelve un `Reply`.
 - `main.py`: `create_app`, middleware, validación de entrada, encabezados, auditoría de acceso y campos de la

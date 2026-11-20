@@ -93,4 +93,5 @@ def agent_run_fields(
         "agent_route": reply.agent_route,
         "cached_calls": result.cached_calls,
         "cost_usd": result.cost_usd,
+        "prefetched": result.prefetched,
     }

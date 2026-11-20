@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from app.agent import Agent, AgentResult
 from app.output_guard import check_output
 from app.pii import mask
-from app.supervisor import choose_agent
+from app.supervisor import choose_agent, choose_tool
 from app.tracing import Tracer, request_metadata
 from app.window import trim_history
 
@@ -99,7 +99,7 @@ class Orchestrator:  # pylint: disable=too-few-public-methods
                 self._logger.emit(
                     "audit", action="agent_selected", agent=name, reason=reason
                 )
-                result = self._agents[name].run(messages, model)
+                result = self._run_agent(name, reason, question, messages, model)
             pii_types, blocked = self._secure(result, input_pii or [])
             root.add_metadata(
                 {
@@ -111,9 +111,21 @@ class Orchestrator:  # pylint: disable=too-few-public-methods
                     "pii_types": pii_types,
                     "output_blocked": blocked is not None,
                     "stopped": result.stopped,
+                    "prefetched": result.prefetched,
                 }
             )
         return Reply(name, reason, result, pii_types, blocked)
+
+    def _run_agent(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self, name: str, reason: str, question: str, messages: list[dict], model: str
+    ) -> AgentResult:
+        """Corre al especialista, con la herramienta anticipada si corresponde."""
+        prefetch = None
+        if self._config.prefetch_tools:
+            prefetch = choose_tool(question, reason, self._departments)
+        if prefetch is None:
+            return self._agents[name].run(messages, model)
+        return self._agents[name].run(messages, model, prefetch)
 
     def _secure(
         self, result: AgentResult, input_pii: list[str]
