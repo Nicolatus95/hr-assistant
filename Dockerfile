@@ -10,7 +10,7 @@ WORKDIR /app
 # Usuario sin privilegios para correr el servicio
 RUN useradd --create-home --uid 10001 appuser
 
-# Primero las dependencias: la capa se reutiliza si el código cambia
+# Primero las dependencias de producción (sin pruebas ni Playwright): la capa se reutiliza si el código cambia
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -21,4 +21,4 @@ USER appuser
 
 # Render entrega el puerto en PORT; por omisión 8000
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn app.main:app --no-server-header --host 0.0.0.0 --port ${PORT:-8000}"]

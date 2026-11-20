@@ -1,5 +1,7 @@
 # 0002. Un solo agente con bucle con tope
 
+Estado: Reemplazado por 0014
+
 ## Contexto
 El modelo decide en cada vuelta si pide una herramienta o responde; sin límite podría no terminar.
 

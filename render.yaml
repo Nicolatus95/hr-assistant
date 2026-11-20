@@ -19,6 +19,12 @@ services:
         value: "true"
       - key: HIDE_OUTPUTS
         value: "true"
+      # Trazas en LangSmith: la clave LANGSMITH_API_KEY NO va aquí; la persona
+      # la escribe en Render > Environment
+      - key: LANGSMITH_TRACING
+        value: "true"
+      - key: LANGSMITH_PROJECT
+        value: hr-assistant
       # Secretos: se escriben en Render, nunca en el repositorio
       - key: API_KEYS
         sync: false

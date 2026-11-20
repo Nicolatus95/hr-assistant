@@ -11,6 +11,9 @@ pip install -r requirements.txt
 uvicorn app.main:app
 ```
 
+`requirements.txt` trae solo las dependencias de producción. Para pruebas y
+navegador, ver la sección «Desarrollo».
+
 Endpoints: `GET /` (página), `GET /health`, `POST /ask`, `GET /metrics`.
 Toda respuesta trae el encabezado `X-Request-ID`; `POST /ask` también lo
 devuelve como `request_id` en el cuerpo. La página lo muestra para soporte.
@@ -30,6 +33,37 @@ devuelve como `request_id` en el cuerpo. La página lo muestra para soporte.
 | `HIDE_INPUTS` / `HIDE_OUTPUTS` | `true` | No enviar textos a LangSmith |
 
 Sin `LANGSMITH_API_KEY` el producto funciona igual y no se conecta a nada.
+
+## Supervisor y especialistas
+
+Un supervisor reparte cada pregunta con reglas en código (cero tokens). En
+orden: un id `EMP-0000` o el nombre de un departamento va a `directory` (motivo
+`employee_id` o `department`); una palabra clave de una política (`keywords` de
+`data/policies.json`, sin distinguir mayúsculas ni acentos) va a `policies`
+(motivo `policy:<palabra>`); lo demás va a `directory` (motivo `default`).
+Una pregunta la responde un solo especialista, cada uno con su prompt (en
+`app/prompts.py`) y solo sus herramientas:
+
+- `directory`: `get_employee` y `search_by_department`.
+- `policies`: `get_policy(topic)` y `list_policies()`.
+
+Una herramienta ajena responde `error: unknown tool` y queda en la auditoría.
+`POST /ask` agrega `agent` y `agent_route`.
+
+Limitación conocida: una pregunta que cruza dominios («¿cuántos días de
+vacaciones tiene EMP-0004?») va a `directory` por la primera regla.
+
+Las trazas de LangSmith van al proyecto `LANGSMITH_PROJECT` con el árbol
+`hr_request` > `supervisor` > `agent:<nombre>` > `llm_call` y `tool:<nombre>`.
+En los metadatos de `hr_request`, `agent_route` lleva solo el tipo de regla
+(`policy`, no la palabra clave), para que no salga texto de la pregunta.
+
+| Variable | Por omisión | Para qué |
+| --- | --- | --- |
+| `POLICIES_PATH` | `data/policies.json` | Políticas de RH |
+| `MAX_HISTORY_ITEMS` | `20` | Mensajes de historial permitidos |
+| `MAX_ANSWER_CHARS` | `1500` | Largo máximo de la respuesta |
+| `LANGSMITH_PROJECT` | `hr-assistant-local` | Proyecto de LangSmith |
 
 ## Costos
 
@@ -84,10 +118,66 @@ Con `ENVIRONMENT=production` el producto no arranca si el modelo es `fake`, si
 trazas sin `HIDE_INPUTS` y `HIDE_OUTPUTS` en `true`, o si falta `CF_AIG_TOKEN`
 con `gateway`. Ver `doc/compliance-checklist.md`.
 
-## Pruebas
+### Datos personales, salida y auditoría
+
+- **PII.** La pregunta y cada mensaje del historial se enmascaran antes del
+  enrutador, del supervisor, del modelo, del log y de la traza; la respuesta
+  también. Tipos, en este orden: `CARD` (con Luhn), `CURP`, `RFC`, `EMAIL`, `NSS`
+  y `PHONE`; el marcador es `[CURP]`, etc. `POST /ask` agrega `pii_types`
+  (ordenada y sin repetir). La página muestra el aviso `pii-notice`.
+- **Entrada.** Un mensaje del historial de más de `MAX_QUESTION_CHARS`, o más de
+  `MAX_HISTORY_ITEMS` mensajes, responde `422`.
+- **Salida.** Después del especialista, una respuesta con HTML o con un secreto
+  (claves de `API_KEYS`, `CF_API_TOKEN`, `CF_AIG_TOKEN`, `LANGSMITH_API_KEY`,
+  `Bearer `, `lsv2_`) se cambia por un mensaje fijo y `output_blocked` vale
+  `true`. Una respuesta de más de `MAX_ANSWER_CHARS` se recorta y termina en `…`.
+- **Auditoría.** Eventos `audit` en el log: `agent_selected`, `tool_call`,
+  `pii_detected` (dónde y tipos), `output_blocked` (motivo), `auth_failed`
+  (ruta) y `rate_limited` (cliente). Nunca un valor, un texto ni una clave.
+- **Encabezados.** Toda respuesta lleva `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` y `Referrer-Policy: no-referrer`; `POST /ask` agrega
+  `Cache-Control: no-store`.
+- **Métricas.** `/metrics` agrega `requests_by_agent`, `cost_usd_by_agent`,
+  `pii_detections` y `outputs_blocked`.
+
+Cada control, su lugar en el código y su prueba están en
+`doc/security-controls.md`.
+
+## Desarrollo
 
 ```
-uv run python -m verification unit
+pip install -r requirements-dev.txt
+python -m playwright install chromium
 ```
+
+Desde `product/`, las pruebas unitarias y las de navegador (e2e):
+
+```
+python -m pytest tests
+python -m pytest e2e
+```
+
+### Contenedor
+
+```
+docker build -t hr-assistant .
+docker run --rm -p 8000:8000 -e MODEL_PROVIDER=fake -e API_KEYS=demo:clave-de-prueba-0123456789 hr-assistant
+```
+
+El contenedor corre como usuario sin privilegios y arranca
+`uvicorn app.main:app --no-server-header` en `0.0.0.0` y en el puerto `PORT`
+(8000 por omisión). Solo instala `requirements.txt`.
+
+## Pruebas
+
+Con las dependencias de desarrollo instaladas, desde `product/`:
+
+```
+python -m pytest tests
+python -m pytest e2e
+```
+
+La fábrica las corre con `uv run python -m verification unit` (desde la raíz
+del repositorio).
 
 La arquitectura y los ADR están en `doc/`.

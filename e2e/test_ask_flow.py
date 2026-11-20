@@ -70,6 +70,28 @@ def test_request_id_changes_between_two_questions(page: Page):
     expect(page.get_by_test_id("request-id")).not_to_have_text(first_id)
 
 
+def test_vacation_question_shows_twelve_days_and_the_policies_agent(page: Page):
+    _open_with_key(page)
+    _ask(page, "Cuantos dias de vacaciones me tocan?")
+
+    expect(page.locator("[data-testid=answer] .assistant")).to_contain_text(
+        "12 días"
+    )
+    expect(page.get_by_test_id("agent")).to_contain_text("policies")
+
+
+def test_question_with_a_curp_shows_the_notice_and_hides_the_curp(page: Page):
+    curp = "GOMC800101HDFRRL09"
+    _open_with_key(page)
+    _ask(page, f"Mi CURP es {curp}, que me puedes decir?")
+
+    expect(page.get_by_test_id("pii-notice")).to_contain_text("CURP")
+    assistant = page.locator("[data-testid=answer] .assistant")
+    expect(assistant).to_have_count(1)
+    expect(assistant).to_have_text(NON_BLANK)
+    expect(assistant).not_to_contain_text(curp)
+
+
 def test_wrong_api_key_shows_invalid_key_message(page: Page):
     _open_with_key(page, api_key="definitely-not-a-valid-key")
     _ask(page, "Cuantos empleados hay?")

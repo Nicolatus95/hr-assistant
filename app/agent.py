@@ -1,13 +1,15 @@
-"""Agente con bucle acotado que usa herramientas del directorio."""
+"""Especialista con bucle acotado que usa solo las herramientas que le tocan."""
 
 import inspect
 import json
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 from app.directory import Directory
 from app.llm import TOOL_PREFIX
 
 CAP_MESSAGE = "No pude completar la respuesta. Intenta con una pregunta más concreta."
+_DECODER = json.JSONDecoder()
 
 
 @dataclass
@@ -44,16 +46,64 @@ def _accepts_model(complete) -> bool:
     return count >= 2 or any(p.kind is kinds.VAR_POSITIONAL for p in params)
 
 
+def directory_tools(directory: Directory) -> dict[str, Callable]:
+    """Herramientas del especialista ``directory``.
+
+    :param directory: directorio de empleados.
+    :return: diccionario de nombre a función que recibe los argumentos.
+    """
+    return {
+        "get_employee": lambda a: directory.get_employee(a["employee_id"]),
+        "search_by_department": lambda a: directory.search_by_department(
+            a["department"]
+        ),
+    }
+
+
+def policies_tools(policies) -> dict[str, Callable]:
+    """Herramientas del especialista ``policies``.
+
+    :param policies: políticas de RH.
+    :return: diccionario de nombre a función que recibe los argumentos.
+    """
+    return {
+        "get_policy": lambda a: policies.get_policy(a["topic"]),
+        "list_policies": lambda _a: policies.list_policies(),
+    }
+
+
+def parse_reply(text: str) -> dict | None:
+    """Toma el primer objeto JSON del texto, aunque venga en un bloque de código.
+
+    :param text: respuesta del modelo.
+    :return: el objeto, o ``None`` si el texto no tiene ninguno.
+    """
+    start = text.find("{")
+    while start != -1:
+        try:
+            body, _end = _DECODER.raw_decode(text, start)
+        except json.JSONDecodeError:
+            start = text.find("{", start + 1)
+            continue
+        return body
+    return None
+
+
 class Agent:  # pylint: disable=too-many-instance-attributes
-    """Agente de un solo modelo con tope de vueltas.
+    """Especialista de un solo modelo con tope de vueltas.
 
     :param llm: modelo con método ``complete(messages)``; si además admite
         ``model``, se le indica el modelo elegido por el enrutador.
-    :param directory: directorio de empleados.
+    :param directory: directorio de empleados; da las herramientas por omisión.
     :param max_steps: tope de vueltas del bucle.
-    :param audit: función ``audit(tool, args)`` llamada por cada herramienta.
+    :param audit: función ``audit(tool, args)`` llamada por cada herramienta
+        pedida, incluso si no es del especialista.
     :param tracer: objeto con ``wrap(func, name)`` para trazar; opcional.
     :param pricing: precios para calcular el costo; opcional.
+    :param name: nombre del especialista.
+    :param prompt: mensaje de sistema; se antepone a la conversación.
+    :param tools: herramientas propias (nombre a función); si falta, las del
+        directorio.
     """
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -64,34 +114,37 @@ class Agent:  # pylint: disable=too-many-instance-attributes
         audit=None,
         tracer=None,
         pricing=None,
+        name: str = "directory",
+        prompt: str | None = None,
+        tools: Mapping[str, Callable] | None = None,
     ) -> None:
+        self.name = name
         self._llm = llm
         self._pricing = pricing
         self._with_model = _accepts_model(llm.complete)
-        self._directory = directory
         self._max_steps = max_steps
         self._audit = audit
+        self._prompt = prompt
         wrap = tracer.wrap if tracer is not None else (lambda func, _name: func)
         self._complete = wrap(llm.complete, "llm_call")
+        own = directory_tools(directory) if tools is None else dict(tools)
         self._tools = {
-            "get_employee": wrap(
-                lambda a: self._directory.get_employee(a["employee_id"]),
-                "tool:get_employee",
-            ),
-            "search_by_department": wrap(
-                lambda a: self._directory.search_by_department(a["department"]),
-                "tool:search_by_department",
-            ),
+            key: wrap(func, f"tool:{key}") for key, func in own.items()
         }
-        self._traced_run = wrap(self._run, "agent_run")
+        self._traced_run = wrap(self._run, f"agent:{name}")
 
     def run(self, messages: list[dict], model: str | None = None) -> AgentResult:
         """Ejecuta el bucle hasta obtener respuesta o llegar al tope.
+
+        El mensaje de sistema se antepone aquí, después de que el llamador
+        recortó el historial, así que la ventana nunca lo quita.
 
         :param messages: conversación, con la pregunta al final.
         :param model: modelo elegido por el enrutador; opcional.
         :return: el resultado del agente.
         """
+        if self._prompt:
+            messages = [{"role": "system", "content": self._prompt}, *messages]
         return self._traced_run(messages, model)
 
     def _run(self, messages: list[dict], model: str | None = None) -> AgentResult:
@@ -130,24 +183,21 @@ class Agent:  # pylint: disable=too-many-instance-attributes
 
     def _execute(self, text: str, result: AgentResult) -> dict:
         """Interpreta la respuesta del modelo y ejecuta la herramienta pedida."""
-        try:
-            body = json.loads(text)
-        except json.JSONDecodeError:
-            return {"final": False, "text": "error: invalid JSON from the model"}
-        if not isinstance(body, dict):
-            return {"final": False, "text": "error: invalid JSON from the model"}
+        body = parse_reply(text)
+        if body is None:
+            return {"final": True, "text": text}
         if "answer" in body:
             return {"final": True, "text": str(body["answer"])}
         name = body.get("tool")
-        tool = self._tools.get(name)
-        if tool is None:
-            return {"final": False, "text": f"error: unknown tool {name!r}"}
         args = body.get("args") or {}
         if self._audit is not None:
             self._audit(name, args)
+        tool = self._tools.get(name) if isinstance(name, str) else None
+        if tool is None:
+            return {"final": False, "text": f"error: unknown tool {name!r}"}
         try:
             output = tool(args)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, AttributeError):
             return {"final": False, "text": f"error: bad arguments for {name}"}
         result.tools_used.append(name)
         return {"final": False, "text": json.dumps(output, ensure_ascii=False)}

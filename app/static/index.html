@@ -40,7 +40,14 @@
     sessionStorage.setItem("hr-api-key", keyField.value);
   });
 
-  function addLine(kind, text, tools) {
+  function addNote(box, testid, text) {
+    const note = document.createElement("small");
+    note.setAttribute("data-testid", testid);
+    note.textContent = text;
+    box.appendChild(note);
+  }
+
+  function addLine(kind, text, tools, agent, piiTypes) {
     const box = document.createElement("div");
     box.className = kind;
     box.textContent = text;
@@ -48,6 +55,13 @@
       const note = document.createElement("small");
       note.textContent = "Herramientas usadas: " + tools.join(", ");
       box.appendChild(note);
+    }
+    if (agent) {
+      addNote(box, "agent", "Especialista: " + agent);
+    }
+    if (piiTypes && piiTypes.length) {
+      addNote(box, "pii-notice",
+        "Se ocultaron datos personales: " + piiTypes.join(", "));
     }
     log.appendChild(box);
   }
@@ -86,7 +100,8 @@
       const data = await reply.json();
       history.push({ role: "user", content: question });
       history.push({ role: "assistant", content: data.answer });
-      addLine("assistant", data.answer, data.tools_used);
+      addLine("assistant", data.answer, data.tools_used, data.agent,
+        data.pii_types);
       requestId.textContent = data.request_id;
     } catch (error) {
       addLine("error", "No se pudo conectar con el servicio.");
