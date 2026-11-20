@@ -95,12 +95,11 @@ class Orchestrator:  # pylint: disable=too-few-public-methods
                 )
                 messages = trim_history(history, config.history_window)
                 messages.append({"role": "user", "content": question})
-                try:
-                    result = self._agents[name].run(messages, model)
-                finally:
-                    self._logger.emit(
-                        "audit", action="agent_selected", agent=name, reason=reason
-                    )
+                # Antes de correr al especialista, para que quede aunque falle.
+                self._logger.emit(
+                    "audit", action="agent_selected", agent=name, reason=reason
+                )
+                result = self._agents[name].run(messages, model)
             pii_types, blocked = self._secure(result, input_pii or [])
             root.add_metadata(
                 {

@@ -9,7 +9,8 @@ from app.directory import Directory
 from app.llm import TOOL_PREFIX
 
 CAP_MESSAGE = "No pude completar la respuesta. Intenta con una pregunta más concreta."
-_DECODER = json.JSONDecoder()
+REPEAT_ERROR = 'error: ya tienes ese resultado; responde con {"answer": "..."}'
+_DECODER =json.JSONDecoder()
 
 
 @dataclass
@@ -151,6 +152,7 @@ class Agent:  # pylint: disable=too-many-instance-attributes
         """Bucle del agente, sin trazas propias."""
         result = AgentResult(answer=CAP_MESSAGE)
         conversation = list(messages)
+        seen: set = set()
         for _ in range(self._max_steps):
             if self._with_model and model is not None:
                 reply = self._complete(conversation, model)
@@ -160,13 +162,14 @@ class Agent:  # pylint: disable=too-many-instance-attributes
             result.input_tokens += reply.input_tokens
             result.output_tokens += reply.output_tokens
             self._add_cost(result, reply, model)
-            outcome = self._execute(reply.text, result)
+            outcome = self._execute(reply.text, result, seen)
             if outcome["final"]:
                 result.answer = outcome["text"]
                 return result
-            conversation.append(
-                {"role": "user", "content": TOOL_PREFIX + outcome["text"]}
-            )
+            content = outcome["text"]
+            if not outcome.get("raw"):
+                content = TOOL_PREFIX + content
+            conversation.append({"role": "user", "content": content})
         result.stopped = True
         return result
 
@@ -181,8 +184,12 @@ class Agent:  # pylint: disable=too-many-instance-attributes
             name, reply.input_tokens, reply.output_tokens, cached
         )
 
-    def _execute(self, text: str, result: AgentResult) -> dict:
-        """Interpreta la respuesta del modelo y ejecuta la herramienta pedida."""
+    def _execute(self, text: str, result: AgentResult, seen: set) -> dict:
+        """Interpreta la respuesta del modelo y ejecuta la herramienta pedida.
+
+        Una herramienta repetida con los mismos argumentos no se ejecuta ni se
+        audita: el modelo recibe ``REPEAT_ERROR``.
+        """
         body = parse_reply(text)
         if body is None:
             return {"final": True, "text": text}
@@ -190,6 +197,13 @@ class Agent:  # pylint: disable=too-many-instance-attributes
             return {"final": True, "text": str(body["answer"])}
         name = body.get("tool")
         args = body.get("args") or {}
+        try:
+            key = (name, json.dumps(args, sort_keys=True))
+        except TypeError:
+            key = (name, repr(args))
+        if key in seen:
+            return {"final": False, "text": REPEAT_ERROR, "raw": True}
+        seen.add(key)
         if self._audit is not None:
             self._audit(name, args)
         tool = self._tools.get(name) if isinstance(name, str) else None

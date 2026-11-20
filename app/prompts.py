@@ -1,10 +1,12 @@
 """Prompts de sistema de los especialistas (cortos, máximo 120 palabras)."""
 
 _PROTOCOL = (
-    "Responde solo con un objeto JSON: "
-    '{"tool": "...", "args": {...}} o {"answer": "..."}. '
-    "Responde en español, breve, sin inventar datos que no vengan de una "
-    "herramienta."
+    "Responde solo con un objeto JSON. Para pedir una herramienta: "
+    '{"tool": "nombre", "args": {"clave": "valor"}}. Para contestar: '
+    '{"answer": "texto"}. Si el mensaje empieza con '
+    '"Resultado de la herramienta:", ya tienes el dato: responde con '
+    '{"answer": ...} y no repitas la herramienta. '
+    "Responde en español, breve, sin inventar datos."
 )
 
 PROMPTS = {

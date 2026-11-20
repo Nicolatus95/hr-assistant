@@ -210,8 +210,11 @@ def check_common_fields(log_lines):
 @then(parsers.parse('the log has an "audit" event for tool "{tool}" with args'))
 def check_audit_event(log_lines, tool):
     """The audit event names the tool and its arguments."""
-    event = events_named(log_lines, "audit")[0]
-    assert event["action"] == "tool_call"
+    calls = [
+        e for e in events_named(log_lines, "audit") if e.get("action") == "tool_call"
+    ]
+    assert calls
+    event = calls[0]
     assert event["tool"] == tool
     assert event["args"] == {"employee_id": "EMP-0001"}
 
