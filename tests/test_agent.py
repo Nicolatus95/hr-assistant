@@ -8,19 +8,6 @@ from app.agent import Agent
 CAP_MESSAGE = "No pude completar la respuesta. Intenta con una pregunta más concreta."
 
 
-class ScriptedLLM:
-    """Model that replays prepared replies and records what it received."""
-
-    def __init__(self, replies):
-        self.replies = list(replies)
-        self.calls = []
-
-    def complete(self, messages):
-        self.calls.append(list(messages))
-        text = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
-        return SimpleNamespace(text=text, input_tokens=10, output_tokens=2)
-
-
 class AlwaysToolLLM:
     """Model that never answers."""
 
@@ -37,15 +24,15 @@ def ask(agent, text="pregunta"):
     return agent.run([{"role": "user", "content": text}])
 
 
-def test_direct_answer_takes_one_step(directory):
-    llm = ScriptedLLM([json.dumps({"answer": "Hola"})])
+def test_direct_answer_takes_one_step(directory, scripted_llm):
+    llm = scripted_llm([json.dumps({"answer": "Hola"})])
     result = ask(make_agent(llm, directory))
     assert (result.answer, result.steps, result.tools_used) == ("Hola", 1, [])
 
 
-def test_tool_result_is_fed_back_and_tokens_are_added(directory):
+def test_tool_result_is_fed_back_and_tokens_are_added(directory, scripted_llm):
     tool = {"tool": "get_employee", "args": {"employee_id": "EMP-0004"}}
-    llm = ScriptedLLM([json.dumps(tool), json.dumps({"answer": "Es Jorge"})])
+    llm = scripted_llm([json.dumps(tool), json.dumps({"answer": "Es Jorge"})])
     result = ask(make_agent(llm, directory))
     last = llm.calls[1][-1]
     assert last["role"] == "user"
@@ -56,19 +43,21 @@ def test_tool_result_is_fed_back_and_tokens_are_added(directory):
     assert (result.input_tokens, result.output_tokens) == (20, 4)
 
 
-def test_unknown_tool_is_reported_to_the_model(directory):
+def test_unknown_tool_is_reported_to_the_model(directory, scripted_llm):
     bad = json.dumps({"tool": "delete_everything", "args": {}})
-    llm = ScriptedLLM([bad, json.dumps({"answer": "No puedo"})])
+    llm = scripted_llm([bad, json.dumps({"answer": "No puedo"})])
     result = ask(make_agent(llm, directory))
     assert result.answer == "No puedo"
     assert llm.calls[1][-1]["content"].startswith("Resultado de la herramienta: ")
     assert "delete_everything" not in result.tools_used
 
 
-def test_invalid_json_does_not_break_the_agent(directory):
-    llm = ScriptedLLM(["this is not json", json.dumps({"answer": "Listo"})])
+def test_text_without_json_is_taken_as_the_final_answer(directory, scripted_llm):
+    # Session 5: reading the model reply is tolerant; plain text is the answer.
+    llm = scripted_llm(["this is not json", json.dumps({"answer": "Listo"})])
     result = ask(make_agent(llm, directory))
-    assert result.answer == "Listo"
+    assert result.answer == "this is not json"
+    assert result.steps == 1
 
 
 def test_step_cap_returns_the_fixed_message(directory):

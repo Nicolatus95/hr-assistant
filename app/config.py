@@ -20,6 +20,12 @@ class Config:  # pylint: disable=too-many-instance-attributes
     :param agent_max_steps: tope de vueltas del bucle del agente.
     :param max_question_chars: largo máximo de la pregunta.
     :param employees_path: ruta del archivo de empleados.
+    :param policies_path: ruta del archivo de políticas de RH.
+    :param max_history_items: mensajes de historial permitidos por petición.
+    :param max_answer_chars: largo máximo de la respuesta.
+    :param langsmith_project: proyecto de LangSmith donde van las trazas.
+    :param prefetch_tools: si el especialista trae en código el dato que el
+        supervisor indica antes de llamar al modelo.
     """
 
     model_provider: str = "fake"
@@ -49,6 +55,11 @@ class Config:  # pylint: disable=too-many-instance-attributes
     api_keys: dict = field(default_factory=dict, repr=False)
     rate_limit_per_minute: int = 30
     cf_aig_token: str = field(default="", repr=False)
+    policies_path: Path = Path("data/policies.json")
+    max_history_items: int = 20
+    max_answer_chars: int = 1500
+    langsmith_project: str = "hr-assistant-local"
+    prefetch_tools: bool = True
 
 
 def _boolean(env: Mapping[str, str], name: str, default: bool) -> bool:
@@ -175,6 +186,15 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         ),
         hide_inputs=_boolean(env, "HIDE_INPUTS", defaults.hide_inputs),
         hide_outputs=_boolean(env, "HIDE_OUTPUTS", defaults.hide_outputs),
+        policies_path=Path(env.get("POLICIES_PATH") or defaults.policies_path),
+        max_history_items=_positive_int(
+            env, "MAX_HISTORY_ITEMS", defaults.max_history_items
+        ),
+        max_answer_chars=_positive_int(
+            env, "MAX_ANSWER_CHARS", defaults.max_answer_chars
+        ),
+        langsmith_project=env.get("LANGSMITH_PROJECT") or defaults.langsmith_project,
+        prefetch_tools=_boolean(env, "PREFETCH_TOOLS", defaults.prefetch_tools),
     )
     enforce(config)
     return config

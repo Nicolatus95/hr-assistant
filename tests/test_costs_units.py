@@ -251,5 +251,6 @@ def test_only_the_history_window_reaches_the_model(
     client.headers["X-API-Key"] = "test-key-0123456789"
     history = [{"role": "user", "content": f"m{n}"} for n in range(6)]
     client.post("/ask", json={"question": "Hola", "history": history})
-    contents = [m["content"] for m in seen[0]]
+    # El mensaje de sistema va primero (spec punto 3); aqui se ignora.
+    contents = [m["content"] for m in seen[0] if m["role"] != "system"]
     assert contents == ["m4", "m5", "Hola"]

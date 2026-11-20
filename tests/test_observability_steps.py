@@ -65,6 +65,8 @@ def obs_client(scene, employees_path, directory):
     env = {
         "EMPLOYEES_PATH": str(employees_path),
         "API_KEYS": "test:test-key-0123456789",
+        # Linea base: el conteo de vueltas no incluye la herramienta anticipada.
+        "PREFETCH_TOOLS": "false",
         **scene.env,
     }
     llm = scene.llm(directory) if scene.llm else FakeLLM(directory)
@@ -210,8 +212,11 @@ def check_common_fields(log_lines):
 @then(parsers.parse('the log has an "audit" event for tool "{tool}" with args'))
 def check_audit_event(log_lines, tool):
     """The audit event names the tool and its arguments."""
-    event = events_named(log_lines, "audit")[0]
-    assert event["action"] == "tool_call"
+    calls = [
+        e for e in events_named(log_lines, "audit") if e.get("action") == "tool_call"
+    ]
+    assert calls
+    event = calls[0]
     assert event["tool"] == tool
     assert event["args"] == {"employee_id": "EMP-0001"}
 

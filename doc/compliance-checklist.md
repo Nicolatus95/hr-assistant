@@ -16,3 +16,9 @@ mensaje nombra la regla, nunca un valor secreto.
 | Claves y tokens no salen en `repr`, log, traza ni error | `app/config.py` (`repr=False`), `app/logging_setup.py`, `app/llm.py` | `test_new_settings_have_defaults_and_tokens_stay_out_of_repr`, `test_gateway_failures_do_not_leak_tokens` y el escenario «The key never appears in the log or in the error» |
 | Límite de peticiones por cliente con reloj inyectado | `app/ratelimit.py`, `app/main.py` (`limit_client`) | `test_requests_over_the_limit_report_the_seconds_left` y los escenarios 429 |
 | La página guarda la clave solo en `sessionStorage` | `app/static/index.html` | `tests/test_production_page.py` |
+| La PII se enmascara antes del supervisor, del modelo, del log y de la traza | `app/pii.py`, `app/main.py` (`prepare_inputs`) | escenario «A CURP in the question is masked and never logged» |
+| La respuesta se valida (HTML, secretos, largo) antes de salir | `app/output_guard.py`, `app/orchestrator.py` (`_secure`) | `test_output_with_html_or_a_secret_is_blocked` |
+| La auditoría registra tipos y motivos, nunca valores | `app/orchestrator.py`, `app/main.py` | `test_security_events_are_audited_without_the_key` |
+| Toda respuesta lleva encabezados de seguridad | `app/main.py`, middleware `observe` | escenario «Every response carries the security headers» |
+
+El detalle de cada control está en `doc/security-controls.md`.

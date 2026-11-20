@@ -1,0 +1,37 @@
+[
+  {
+    "id": "POL-VAC",
+    "topic": "vacaciones",
+    "keywords": ["vacaciones", "dias libres", "prima vacacional"],
+    "summary": "12 días de vacaciones al cumplir el primer año; suben 2 días por año hasta 20 en el quinto año y después 2 días cada 5 años. Prima vacacional del 50 %. Se piden con 15 días de anticipación.",
+    "updated": "2026-01-01"
+  },
+  {
+    "id": "POL-HO",
+    "topic": "home office",
+    "keywords": ["home office", "trabajo remoto", "teletrabajo"],
+    "summary": "Hasta 3 días de home office por semana con acuerdo del jefe directo. La empresa apoya con 600 pesos al mes para internet y luz.",
+    "updated": "2026-01-01"
+  },
+  {
+    "id": "POL-AGU",
+    "topic": "aguinaldo",
+    "keywords": ["aguinaldo"],
+    "summary": "30 días de salario de aguinaldo (la ley pide al menos 15), pagados a más tardar el 15 de diciembre; proporcional si no se completó el año.",
+    "updated": "2026-01-01"
+  },
+  {
+    "id": "POL-PAT",
+    "topic": "paternidad",
+    "keywords": ["paternidad"],
+    "summary": "10 días hábiles de licencia de paternidad con goce de sueldo (la ley pide 5), por nacimiento o adopción.",
+    "updated": "2026-01-01"
+  },
+  {
+    "id": "POL-MAT",
+    "topic": "maternidad",
+    "keywords": ["maternidad", "lactancia"],
+    "summary": "12 semanas de licencia de maternidad con goce de sueldo y dos descansos de media hora al día para lactancia durante 6 meses.",
+    "updated": "2026-01-01"
+  }
+]

@@ -3,7 +3,7 @@
 from app.config import Config
 from app.directory import normalize
 
-KEYWORDS = ("compara", "resume", "explica", "por qué", "analiza", "todos")
+KEYWORDS = ("compara", "resume", "explica", "por qué", "analiza", "todos", "lista")
 
 
 def choose_model(question: str, config: Config) -> tuple[str, str]:

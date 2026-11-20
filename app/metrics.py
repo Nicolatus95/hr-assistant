@@ -13,14 +13,20 @@ def _percentile(sorted_values: list[float], fraction: float) -> float:
     return sorted_values[rank - 1]
 
 
-class Metrics:
+class Metrics:  # pylint: disable=too-many-instance-attributes
     """Acumula peticiones, latencias y tokens.
 
     :param slo_p95_ms: meta de latencia p95 en milisegundos.
     """
 
-    def __init__(self, slo_p95_ms: int) -> None:
+    def __init__(
+        self, slo_p95_ms: int, agents: tuple[str, ...] = ("directory", "policies")
+    ) -> None:
         self._target = slo_p95_ms
+        self._by_agent = {name: 0 for name in agents}
+        self._cost_by_agent = {name: 0.0 for name in agents}
+        self._pii_detections = 0
+        self._outputs_blocked = 0
         self._lock = threading.Lock()
         self._latencies: list[float] = []
         self._failures = 0
@@ -35,6 +41,22 @@ class Metrics:
         """
         with self._lock:
             self._cost_usd += cost_usd
+
+    def record_answer(
+        self, agent: str, cost_usd: float, has_pii: bool, blocked: bool
+    ) -> None:
+        """Registra los contadores de negocio de una respuesta.
+
+        :param agent: especialista que contestó.
+        :param cost_usd: costo de la respuesta en USD.
+        :param has_pii: si la petición tuvo datos personales.
+        :param blocked: si la salida fue bloqueada.
+        """
+        with self._lock:
+            self._by_agent[agent] = self._by_agent.get(agent, 0) + 1
+            self._cost_by_agent[agent] = self._cost_by_agent.get(agent, 0.0) + cost_usd
+            self._pii_detections += 1 if has_pii else 0
+            self._outputs_blocked += 1 if blocked else 0
 
     def record_request(self, latency_ms: float, failed: bool) -> None:
         """Registra una petición.
@@ -75,5 +97,9 @@ class Metrics:
                     "output": self._output_tokens,
                 },
                 "cost_usd": self._cost_usd,
+                "requests_by_agent": dict(self._by_agent),
+                "cost_usd_by_agent": dict(self._cost_by_agent),
+                "pii_detections": self._pii_detections,
+                "outputs_blocked": self._outputs_blocked,
                 "slo": {"p95_ms_target": self._target, "met": p95 < self._target},
             }

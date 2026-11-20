@@ -3,7 +3,8 @@
 .env.*
 !.env.example
 
-# Pruebas y punta a punta: no se necesitan para correr
+# Dependencias de desarrollo, pruebas y punta a punta: no se necesitan para correr
+requirements-dev.txt
 tests/
 e2e/
 

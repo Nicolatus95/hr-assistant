@@ -3,8 +3,3 @@ uvicorn
 pydantic
 httpx
 langsmith
-pytest
-pytest-bdd
-pytest-cov
-pylint>=3
-pytest-playwright>=0.5

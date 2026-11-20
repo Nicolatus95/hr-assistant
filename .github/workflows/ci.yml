@@ -1,4 +1,4 @@
-# Pipeline de CI: style -> unit -> e2e -> docker.
+# Pipeline de CI: style y audit (en paralelo) -> unit -> e2e -> docker.
 name: CI
 
 on:
@@ -15,11 +15,24 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar dependencias
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Pylint con 88 columnas
         run: >
           python -m pylint app tests --max-line-length=88
           --disable=missing-function-docstring,redefined-outer-name,too-few-public-methods
+
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Instalar pip-audit
+        run: pip install pip-audit
+      - name: Auditar las dependencias de produccion
+        run: pip-audit -r requirements.txt
 
   unit:
     name: unit
@@ -31,7 +44,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar dependencias
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Pruebas y BDD con cobertura minima de 80 %
         run: python -m pytest tests --cov=app --cov-fail-under=80
 
@@ -48,7 +61,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar dependencias
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Instalar Chromium
         run: python -m playwright install --with-deps chromium
       - name: Arrancar el producto con el modelo simulado
@@ -69,9 +82,27 @@ jobs:
 
   docker:
     name: docker
-    needs: e2e
+    needs: [e2e, audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - name: Construir la imagen
         run: docker build -t hr-assistant .
+      - name: Arrancar la imagen con el modelo simulado
+        # Clave de ejemplo solo para el CI; no es un secreto real
+        run: >
+          docker run -d --name hr-assistant -p 8000:8000
+          -e MODEL_PROVIDER=fake
+          -e API_KEYS=ci:ci-example-key-0123456789
+          hr-assistant
+      - name: Esperar a /health
+        run: |
+          for i in $(seq 1 40); do
+            curl -fs http://127.0.0.1:8000/health && exit 0
+            sleep 0.5
+          done
+          docker logs hr-assistant
+          exit 1
+      - name: Detener el contenedor
+        if: always()
+        run: docker stop hr-assistant

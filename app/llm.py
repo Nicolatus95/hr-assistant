@@ -8,7 +8,9 @@ from typing import Protocol
 import httpx
 
 from app.config import Config
-from app.directory import Directory, normalize
+from app.directory import Directory
+from app.policies import Policies
+from app.text import normalize
 
 TOOL_PREFIX = "Resultado de la herramienta: "
 HELP_MESSAGE = "Pregúntame por un empleado (EMP-0001) o un departamento."
@@ -51,10 +53,12 @@ class FakeLLM:
     """Modelo simulado sin red, decide con reglas sobre el último mensaje.
 
     :param directory: directorio, para conocer los departamentos.
+    :param policies: políticas, para conocer sus palabras clave; opcional.
     """
 
-    def __init__(self, directory: Directory) -> None:
+    def __init__(self, directory: Directory, policies: Policies | None = None) -> None:
         self._directory = directory
+        self._policies = policies
 
     def _respond(self, messages: list[dict], model: str | None = None) -> LLMResult:
         """Aplica las reglas del modelo simulado.
@@ -86,6 +90,9 @@ class FakeLLM:
             if normalize(department) in normalized:
                 args = {"department": department}
                 return {"tool": "search_by_department", "args": args}
+        keyword = self._policies.find_keyword(last) if self._policies else None
+        if keyword:
+            return {"tool": "get_policy", "args": {"topic": keyword}}
         return {"answer": HELP_MESSAGE}
 
 
@@ -144,16 +151,19 @@ class GatewayLLM:
         return LLMResult(text, tokens[0], tokens[1], model, cached)
 
 
-def build_llm(config: Config, directory: Directory) -> LLM:
+def build_llm(
+    config: Config, directory: Directory, policies: Policies | None = None
+) -> LLM:
     """Crea el modelo según la configuración.
 
     :param config: configuración del servicio.
     :param directory: directorio de empleados.
+    :param policies: políticas de RH; opcional.
     :return: el modelo elegido.
     :raises ValueError: si el proveedor no existe.
     """
     if config.model_provider == "fake":
-        return FakeLLM(directory)
+        return FakeLLM(directory, policies)
     if config.model_provider == "gateway":
         return GatewayLLM(config)
     raise ValueError(f"Unknown model provider: {config.model_provider}")

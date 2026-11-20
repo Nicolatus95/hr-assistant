@@ -1,5 +1,7 @@
 # 0006. Trazas opcionales en LangSmith, ocultas por omisión
 
+Estado: Reemplazado por 0017
+
 ## Contexto
 Se quieren trazas de agente, modelo y herramientas, pero el producto debe funcionar sin red ni clave y sin
 filtrar preguntas de personas.
